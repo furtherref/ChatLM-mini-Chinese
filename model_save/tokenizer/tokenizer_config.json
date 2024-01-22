@@ -9,7 +9,7 @@
       "special": true
     },
     "1": {
-      "content": "[EOS]",
+      "content": "[CLS]",
       "lstrip": false,
       "normalized": false,
       "rstrip": false,
@@ -33,7 +33,7 @@
       "special": true
     },
     "4": {
-      "content": "[CLS]",
+      "content": "[EOS]",
       "lstrip": false,
       "normalized": false,
       "rstrip": false,

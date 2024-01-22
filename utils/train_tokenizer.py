@@ -7,7 +7,7 @@ from tokenizers import Tokenizer, decoders
 from tokenizers.models import BPE
 from tokenizers.trainers import BpeTrainer
 from tokenizers.pre_tokenizers import Punctuation, Digits, Metaspace
-from tokenizers.normalizers import NFKC 
+from tokenizers.normalizers import NFKC
 from rich import progress
 import ujson
 from jieba import lcut
@@ -16,23 +16,26 @@ from multiprocessing import RLock, Pool
 from multiprocessing.managers import BaseManager
 
 import pandas as pd
-import os 
+import os
 import time
 from collections import defaultdict
 
 from config import PROJECT_ROOT
 
+
 class MyManager(BaseManager):
     '''
-    nothing to be done 
+    nothing to be done
     '''
-    pass 
+    pass
+
 
 '''
 尝试使用 huggingface tokenizers 库进行训练，但是OOM了，GitHub的issue回复也没有实质性建议
 故使用sentencepiece训练
 
 '''
+
 
 def train_my_huggingface_tokenizer() -> None:
     '''
@@ -42,6 +45,7 @@ def train_my_huggingface_tokenizer() -> None:
     pf = ParquetFile(PROJECT_ROOT + '/data/my_dataset.parquet')
     tokenizer_save_path = PROJECT_ROOT + '/model_save'
     if not exists(tokenizer_save_path): mkdir(tokenizer_save_path)
+    tokenizer_save_path = tokenizer_save_path + '/hf_bpe_tokenizer.json'
 
     def get_training_corpus():
         for pf_chunk in pf:
@@ -53,12 +57,13 @@ def train_my_huggingface_tokenizer() -> None:
     # tokenizer.pre_tokenizer = Whitespace()
 
     trainer = BpeTrainer(vocab_size=40960, min_frequency=10000, show_progress=True, \
-                         special_tokens=["[PAD]", "[CLS]","[SEP]", "[MASK]", "[UNK]"])
+                         special_tokens=["[PAD]", "[CLS]", "[SEP]", "[MASK]", "[UNK]"])
     tokenizer.train_from_iterator(get_training_corpus(), trainer=trainer)
 
     tokenizer.save(tokenizer_save_path)
-   
-def train_my_huggingface_wiki_tokenizer(max_train_line: int=None) -> None:
+
+
+def train_my_huggingface_wiki_tokenizer(max_train_line: int = None) -> None:
     '''
     训练tokenizer with huggingface，至少需要32G内存，运行大概需要半个小时。
     '''
@@ -68,7 +73,7 @@ def train_my_huggingface_wiki_tokenizer(max_train_line: int=None) -> None:
 
     # if not exists(tokenizer_save_path): mkdir(tokenizer_save_path)
 
-    def get_training_corpus(buffer_size: int=1000, chunk_len: int=2048) -> list:
+    def get_training_corpus(buffer_size: int = 1000, chunk_len: int = 2048) -> list:
         '''
         一个文本块大小2048
         '''
@@ -87,21 +92,21 @@ def train_my_huggingface_wiki_tokenizer(max_train_line: int=None) -> None:
                         ''.join(cur_chunk_txt)
                     )
                     cur_chunk_txt, txt_len = [], 0
-                
+
                 if len(buffer) >= buffer_size:
                     yield buffer
                     buffer = []
 
                 if isinstance(max_train_line, int) and line_cnt > max_train_line: break
-                
+
             # yield last
-            if len(buffer) > 0: yield buffer        
+            if len(buffer) > 0: yield buffer
 
     model = BPE(unk_token="[UNK]")
 
     tokenizer = Tokenizer(model)
-    
-    special_tokens = ["[PAD]","[EOS]","[SEP]","[BOS]", "[CLS]", "[MASK]", "[UNK]"]
+
+    special_tokens = ["[PAD]", "[EOS]", "[SEP]", "[BOS]", "[CLS]", "[MASK]", "[UNK]"]
 
     # 用兼容等价分解合并对utf编码进行等价组合，比如全角A转换为半角A
     tokenizer.normalizer = tokenizers.normalizers.Sequence([NFKC()])
@@ -117,7 +122,7 @@ def train_my_huggingface_wiki_tokenizer(max_train_line: int=None) -> None:
     trainer = BpeTrainer(vocab_size=40960, min_frequency=100, show_progress=True, special_tokens=special_tokens)
     tokenizer.train_from_iterator(get_training_corpus(), trainer=trainer)
 
-    # add \t \n 
+    # add \t \n
     if '\t' not in tokenizer.get_vocab():
         tokenizer.add_tokens(['\t'])
     if '\n' not in tokenizer.get_vocab():
@@ -125,17 +130,18 @@ def train_my_huggingface_wiki_tokenizer(max_train_line: int=None) -> None:
 
     tokenizer.save(tokenizer_save_path)
 
+
 def train_my_BPE_tokenizer() -> None:
     '''
     使用sentencepiece训练BPE，缺点只能加载300万行，16G内存会OOM
     '''
     txt_corpus_file = PROJECT_ROOT + '/data/my_corpus.txt'
-    special_tokens = ["[PAD]", "[CLS]","[SEP]", "[MASK]", "[UNK]"]
+    special_tokens = ["[PAD]", "[CLS]", "[SEP]", "[MASK]", "[UNK]"]
 
     spm.SentencePieceTrainer.train(
-        input=txt_corpus_file, 
-        model_prefix='my_tokenizer', 
-        vocab_size=40960, 
+        input=txt_corpus_file,
+        model_prefix='my_tokenizer',
+        vocab_size=40960,
         user_defined_symbols=special_tokens,
         max_sentence_length=256,
         shuffle_input_sentence=True,
@@ -149,7 +155,7 @@ def get_corpus_dict() -> None:
     获取语料的字典
     '''
     parquet_file = PROJECT_ROOT + '/data/my_dataset.parquet'
-    save_file = PROJECT_ROOT + '/data/my_dict.json'
+    save_file = PROJECT_ROOT + '/model_save/my_dict.json'
 
     if exists(save_file): remove(save_file)
 
@@ -157,7 +163,7 @@ def get_corpus_dict() -> None:
     word_freq = dict()
     single_word_freq = dict()
 
-    def add_to_dict(w_dict: dict, word: str, is_whole_word: bool=True) -> None:
+    def add_to_dict(w_dict: dict, word: str, is_whole_word: bool = True) -> None:
         '''
         将word添加到字典中
         '''
@@ -180,13 +186,12 @@ def get_corpus_dict() -> None:
                 add_sentence_to_dict(prompt)
                 add_sentence_to_dict(response)
 
-    
     with open(save_file, 'w', encoding='utf-8') as f:
-        ujson.dump({'word_freq': word_freq, 'single_word_freq': single_word_freq}, f,  indent=4, ensure_ascii=False)
+        ujson.dump({'word_freq': word_freq, 'single_word_freq': single_word_freq}, f, indent=4, ensure_ascii=False)
 
 
-def df_process_function(rows: pd.DataFrame, word_freq_dict: dict, single_word_dict:dict, \
-                        word_freq_dict_lock: RLock, single_word_dict_lock: RLock)-> None:
+def df_process_function(rows: pd.DataFrame, word_freq_dict: dict, single_word_dict: dict, \
+                        word_freq_dict_lock: RLock, single_word_dict_lock: RLock) -> None:
     i = 0
     s = time.time()
     for row in rows.iterrows():
@@ -226,9 +231,9 @@ def df_process_function(rows: pd.DataFrame, word_freq_dict: dict, single_word_di
         i += 1
         if i % 100 == 0:
             print('pid {}, {} row, add use {}s'.format(os.getpid(), i, time.time() - s))
-            
 
-def add_to_dict(w_dict: dict, lock: RLock,  word: str, is_whole_word: bool=True) -> None:
+
+def add_to_dict(w_dict: dict, lock: RLock, word: str, is_whole_word: bool = True) -> None:
     '''
     将word添加到字典中
     '''
@@ -238,37 +243,41 @@ def add_to_dict(w_dict: dict, lock: RLock,  word: str, is_whole_word: bool=True)
 
         s = time.time()
         if is_whole_word:
-                w_dict[word] = w_dict.get(word, 0) + 1
+            w_dict[word] = w_dict.get(word, 0) + 1
         else:
             for ch in word:
                 w_dict[ch] = w_dict.get(ch, 0) + 1
         print('pid {}, add for loop use {}s'.format(os.getpid(), time.time() - s))
 
-def add_sentence_to_dict(sentence: list,  word_freq_dict, single_word_dict, word_freq_dict_lock, single_word_dict_lock) -> None:
+
+def add_sentence_to_dict(sentence: list, word_freq_dict, single_word_dict, word_freq_dict_lock,
+                         single_word_dict_lock) -> None:
     for word in sentence:
         add_to_dict(word_freq_dict, word_freq_dict_lock, word, is_whole_word=True)
         add_to_dict(single_word_dict, single_word_dict_lock, word, is_whole_word=False)
 
-def run_process(processes_pool: Pool, cur_rows: list, word_freq_dict, single_word_dict, word_freq_dict_lock, single_word_dict_lock) -> None:
+
+def run_process(processes_pool: Pool, cur_rows: list, word_freq_dict, single_word_dict, word_freq_dict_lock,
+                single_word_dict_lock) -> None:
     async_res_list = []
     for i in range(len(cur_rows)):
-        async_result = processes_pool.apply_async(df_process_function, 
-                                                    args=(
-                                                            cur_rows[i], 
-                                                            word_freq_dict, 
-                                                            single_word_dict, 
-                                                            word_freq_dict_lock, 
-                                                            single_word_dict_lock
-                                                        ))
-        
+        async_result = processes_pool.apply_async(df_process_function,
+                                                  args=(
+                                                      cur_rows[i],
+                                                      word_freq_dict,
+                                                      single_word_dict,
+                                                      word_freq_dict_lock,
+                                                      single_word_dict_lock
+                                                  ))
+
         async_res_list.append(async_result)
 
-    # 等等所有进程完成后再处理下一批次数据   
+    # 等等所有进程完成后再处理下一批次数据
     for async_res in async_res_list:
         async_res.wait()
 
-def get_cropus_dict_multi_process()-> None:
 
+def get_cropus_dict_multi_process() -> None:
     # 注册共享对象，exposed为暴露的可调用函数函数，__getitem__、__setitem__魔术方法可进行下标访问
 
     MyManager.register('word_freq_dict', defaultdict, exposed=('__getitem__', '__setitem__', 'get', 'items'))
@@ -277,9 +286,9 @@ def get_cropus_dict_multi_process()-> None:
     MyManager.register('single_word_dict_lock', RLock, exposed=('acquire', 'release', '__repr__'))
 
     with MyManager() as manager:
-        
+
         cur_rows = []
-       
+
         # 多进程数量
         n = 4
         processes_pool = Pool(n)
@@ -291,56 +300,59 @@ def get_cropus_dict_multi_process()-> None:
         single_word_dict_lock = manager.single_word_dict_lock()
 
         source_pf = ParquetFile(PROJECT_ROOT + '/data/my_dataset.parquet')
-        
+
         for pf_chunk in progress.track(source_pf):
             for rows in pf_chunk.iter_row_groups():
                 cur_rows.append(rows)
-               
+
                 if len(cur_rows) == n:
-                    run_process(processes_pool, cur_rows, word_freq_dict, single_word_dict, word_freq_dict_lock, single_word_dict_lock)
+                    run_process(processes_pool, cur_rows, word_freq_dict, single_word_dict, word_freq_dict_lock,
+                                single_word_dict_lock)
                     cur_rows = []
 
         if len(cur_rows) > 0:
-            run_process(processes_pool, cur_rows, word_freq_dict, single_word_dict, word_freq_dict_lock, single_word_dict_lock)
-            
+            run_process(processes_pool, cur_rows, word_freq_dict, single_word_dict, word_freq_dict_lock,
+                        single_word_dict_lock)
+
         processes_pool.close()
 
         word_freq = dict()
-        for k,v in word_freq_dict.items(): word_freq[k] = v
+        for k, v in word_freq_dict.items(): word_freq[k] = v
 
         single_word_freq = dict()
-        for k,v in single_word_dict.items(): single_word_freq[k] = v
+        for k, v in single_word_dict.items(): single_word_freq[k] = v
 
         with open(PROJECT_ROOT + '/model_save/my_vocab.json', 'w', encoding='utf-8') as f:
-            ujson.dump({'word_freq': word_freq, 'single_word_freq': single_word_freq}, f,  indent=4, ensure_ascii=False)
+            ujson.dump({'word_freq': word_freq, 'single_word_freq': single_word_freq}, f, indent=4, ensure_ascii=False)
 
-def merge_cropus_dict(word_min_freq: int=2500, char_min_freq: int=1500) -> None:
+
+def merge_cropus_dict(word_min_freq: int = 2500, char_min_freq: int = 1500) -> None:
     '''
     合并字典，剔除词频过低的字词
     '''
     raw_dict_file = PROJECT_ROOT + '/model_save/my_dict.json'
-    
+
     raw_dict = None
     with open(raw_dict_file, 'r', encoding='utf-8') as f:
         raw_dict = ujson.load(f)
-    
+
     merged_dict = defaultdict(int)
     for k, v in progress.track(raw_dict['word_freq'].items()):
         if v >= word_min_freq:
-            merged_dict[k] = v 
-    
+            merged_dict[k] = v
+
     for k, v in progress.track(raw_dict['single_word_freq'].items()):
         if v >= char_min_freq and k not in merged_dict:
-            merged_dict[k] = v 
+            merged_dict[k] = v
 
-    # special_tokens = ["[PAD]", "[CLS]","[SEP]", "[MASK]", "[UNK]"]
+            # special_tokens = ["[PAD]", "[CLS]","[SEP]", "[MASK]", "[UNK]"]
     # for st in special_tokens:
     #     merged_dict[st] = word_min_freq * 10
 
     print('merged dict len: {}'.format(len(merged_dict)))
 
     with open(PROJECT_ROOT + '/model_save/my_vocab_merged.dict.json', 'w', encoding='utf-8') as f:
-        ujson.dump(merged_dict, f,  indent=4, ensure_ascii=False)
+        ujson.dump(merged_dict, f, indent=4, ensure_ascii=False)
 
 
 def change_cropus_dict_to_tokenizer() -> None:
@@ -356,20 +368,20 @@ def change_cropus_dict_to_tokenizer() -> None:
 
     print('cropus_dict size: {}'.format(len(cropus_dict)))
 
-    special_tokens = ["[PAD]", "[CLS]","[SEP]", "[BOS]", "[EOS]", "[MASK]", "[UNK]"]
+    special_tokens = ["[PAD]", "[CLS]", "[SEP]", "[BOS]", "[EOS]", "[MASK]", "[UNK]"]
 
     # 给每个字编号
     words_dict = dict()
     idx = 0
     for token in special_tokens:
-        words_dict[token] = idx 
+        words_dict[token] = idx
         idx += 1
-    
+
     for word in cropus_dict.keys():
         if word not in words_dict:
-            words_dict[word] = idx 
+            words_dict[word] = idx
             idx += 1
-    
+
     # add space
     words_dict[' '] = idx
 
@@ -380,7 +392,7 @@ def change_cropus_dict_to_tokenizer() -> None:
         if n >= 2:
             # a, b切分12345示例： 1 2345,  12 345,   123 45,   1234 5
             for i in range(1, n):
-                a, b = ''.join(word[0: i]), ''.join(word[i: ])
+                a, b = ''.join(word[0: i]), ''.join(word[i:])
 
                 if a in words_dict and b in words_dict:
                     words_merge_list.append((a, b))
@@ -391,8 +403,9 @@ def change_cropus_dict_to_tokenizer() -> None:
     model = BPE(vocab=words_dict, merges=words_merge_list, unk_token='[UNK]')
     tokenizer = Tokenizer(model)
     tokenizer.add_special_tokens(special_tokens)
-        
+
     tokenizer.save(PROJECT_ROOT + '/model_save/my_merged_tokenizer.json')
+
 
 def trained_tokenizer_to_PreTrainedTokenizerFast():
     '''
@@ -400,7 +413,8 @@ def trained_tokenizer_to_PreTrainedTokenizerFast():
     '''
     from transformers import PreTrainedTokenizerFast
 
-    tokenizer_obj = Tokenizer.from_pretrained(PROJECT_ROOT + '/model_save/my_merged_tokenizer.json')
+    # tokenizer_obj = Tokenizer.from_pretrained(PROJECT_ROOT + '/model_save/my_merged_tokenizer.json')
+    tokenizer_obj = Tokenizer.from_file(PROJECT_ROOT + '/model_save/my_merged_tokenizer.json')
     tokenizer = PreTrainedTokenizerFast(tokenizer_object=tokenizer_obj)
     tokenizer.pad_token = '[PAD]'
     tokenizer.pad_token_id = tokenizer_obj.token_to_id('[PAD]')
@@ -413,18 +427,18 @@ def trained_tokenizer_to_PreTrainedTokenizerFast():
 
 
 if __name__ == '__main__':
-    # train_my_huggingface_tokenizer()
+    train_my_huggingface_tokenizer()
 
-    train_my_huggingface_wiki_tokenizer()
-    exit(0) 
+    # train_my_huggingface_wiki_tokenizer()
+    # exit(0)
     # train_my_BPE_tokenizer()
-   
+
     # step 1: 统计预训练语料的词频、字频
     get_corpus_dict()
     # get_cropus_dict_multi_process()
 
     # step 2: 将词频、字频大于N的字、词添加到词典中
-    merge_cropus_dict(word_min_freq=2500, char_min_freq=1500) 
+    merge_cropus_dict(word_min_freq=2500, char_min_freq=1500)
 
     # step 3: 将2中得到的词典转换为这个tokenizer：from tokenizers import Tokenizer
     change_cropus_dict_to_tokenizer()
