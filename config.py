@@ -9,7 +9,7 @@ PROJECT_ROOT: str = '/'.join(abspath(dirname(__file__)).split('\\')) if '\\' in 
 @dataclass
 class InferConfig:
     max_seq_len: int = 320                          # 回答的最大长度
-    mixed_precision: str = "bf16"                   # 混合精度 ''no','fp16','bf16' or 'fp8'
+    mixed_precision: str = "fp16"                   # 混合精度 ''no','fp16','bf16' or 'fp8'
 
     # 全量DPO模型文件
     model_dir: str = PROJECT_ROOT + '/model_save/'
